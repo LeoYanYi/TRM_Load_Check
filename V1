@@ -1,0 +1,185 @@
+'  ----------------------------------------------------------------------------------------------------
+'  PrgName:		Terminal Server Load Radar.vbs
+'  Section:		Terminal Server Load Radar
+'  Purpose:		Detect Terminal Server Connection Status.
+'  Versions:	V1
+'  Last Maint:	05/06/2014	By:	Leo Yan
+'  Prereq: 		User must have administrator permission for the servers
+'  ----------------------------------------------------------------------------------------------------
+'  Notes:  Inspired by Samuel Chen's Script
+'  ----------------------------------------------------------------------------------------------------
+'declare the variables 
+On Error Resume Next 
+Dim fso,Server,hh,objfile
+Dim Strcomputer,connObj
+Dim objnetwork,objping,objstatus,strping
+Dim objproc,strconnection,objwmi
+Dim colos,objos,strram
+Dim objwmiservice,colitems,objitem,strhd
+Dim colservices,objservice
+Dim NameSpace,emailContent,Email
+Dim ClickCancel
+'Get Client Info
+Set objNetwork=CreateObject("Wscript.NetWork") 
+Setlocale "en-us"
+
+' -----------------------------------
+' Define Email Title
+' -----------------------------------
+emailtitle = "<h1 style=""font: bold 16px Verdana, Arial, Helvetica, sans-serif;"">Terminal Server Load Radar</h1>"_
+				& "<h3 style=""font: bold 11px Verdana, Arial, Helvetica, sans-serif;"">" & "Time: " & now & "</h3>"_
+				& "<h3 style=""font: bold 11px Verdana, Arial, Helvetica, sans-serif;"">" & "<font color=red>" & "** ​​Below servers need extra attention, please help check! </h3>"_
+				& "<table width=85% cellspacing=0 cellpadding=0 border=0>"_
+				
+' -----------------------------------
+' Define Email Warning Part
+' -----------------------------------
+emailwarning= "<th style = ""font: bold 11px Verdana, Arial, Helvetica, sans-serif; color: #FFFFFF; border: 1px solid #C1DAD7; letter-spacing: 2px; text-transform: uppercase; text-align: left; padding: 6px 6px 6px 12px; background: #4F81BD;rowspan: 2; align: center;"">Server Name</th>"_
+				& "<th style = ""font: bold 11px Verdana, Arial, Helvetica, sans-serif; color: #FFFFFF; border: 1px solid #C1DAD7; letter-spacing: 2px; text-transform: uppercase; text-align: left; padding: 6px 6px 6px 12px; background: #4F81BD;rowspan: 2; align: center;"">Connections</th>"_
+				
+' -----------------------------------
+' Define Email Content
+' -----------------------------------
+emailContent= "<TR>"_
+				& "</table><h3 style=""font: bold 11px Verdana, Arial, Helvetica, sans-serif;"">" & "**Summary</h3>"_
+				& "<table width=85% cellspacing=0 cellpadding=0 border=0>"_
+				
+' -----------------------------------
+' Get ALL of Site Server File
+' -----------------------------------
+Set cmd=CreateObject("Wscript.Shell")
+cmd.run "cmd /c dir/b .\server\*.txt >.\log\serverlist.log",0
+' -----------------------------------------------
+' Hold VBS 1s to waiting for the cmd running
+' -----------------------------------------------
+set WshShell = WScript.CreateObject("WScript.Shell")   
+WScript.Sleep 3000
+' -----------------------------------
+' Get All of Site Server List
+' -----------------------------------
+Set fso = CreateObject("Scripting.FileSystemObject")
+Set Serverlist= fso.OpenTextFile(".\log\serverlist.log", 1, TRUE)
+
+Do While Serverlist.AtEndOfLine <> True 
+	serverfile= fso.getbasename(Serverlist.ReadLine)	
+	emailContent = emailContent & "<TR>"
+	emailContent = emailContent & "<th style = ""font: bold 11px Verdana, Arial, Helvetica, sans-serif; color: #FFFFFF; border: 1px solid #C1DAD7; letter-spacing: 2px; text-transform: uppercase; text-align: left; padding: 6px 6px 6px 12px; background: #4F81BD;rowspan: 2; align: center;"">"& serverfile &"</th>"_
+				& "<th style = ""font: bold 11px Verdana, Arial, Helvetica, sans-serif; color: #FFFFFF; border: 1px solid #C1DAD7; letter-spacing: 2px; text-transform: uppercase; text-align: left; padding: 6px 6px 6px 12px; background: #4F81BD;rowspan: 2; align: center;"">Connections</th>" _
+				
+' ------------------------------------------
+' Initialize Connection and Average Number
+' ------------------------------------------
+	intTotalLoad = 0
+	intSvrCount = 0
+	fltAvgLoad = 1.1
+	
+	Set Server= fso.OpenTextFile(".\Server\"& Serverfile &".txt", 1, True)
+' -----------------------------------
+' Check The Server Online OR NOT
+' -----------------------------------	
+	Do While Server.AtEndOfLine <> True 
+		strcomputer= UCase(Server.ReadLine)	
+		Set objPing = GetObject("winmgmts:{impersonationLevel=impersonate}").ExecQuery("select * from Win32_PingStatus where address = '" & strcomputer & "'")
+		For Each objStatus in objPing
+			strping = objStatus.protocoladdress
+			if strping = "" then
+				strconnection = 0
+' -----------------------------------
+' Check The Server Halt OR NOT
+' -----------------------------------				
+			else 			
+				set objwmiservice=getobject("winmgmts:" & "\\" & strcomputer & "\root\cimv2")
+				set colservices=objwmiservice.execquery("select * from win32_service where displayname='Terminal Services' or displayname='Remote Desktop Services'")
+				for each objservice in colservices
+					if objservice.state<>"Running" then
+						strconnection = 0	
+' -----------------------------------
+' Get Terminal Service Connections
+' -----------------------------------						
+					else						
+' -----------------------------------
+' 		Check The OS Version
+' -----------------------------------
+						Set objWMIService = GetObject("winmgmts:\\" & strComputer & "\root\CIMV2") 
+						Set colItems = objWMIService.ExecQuery( _
+									"SELECT * FROM Win32_OperatingSystem",,48)
+						For Each objItem in colItems 
+							objos = objItem.Caption
+						Next
+' -----------------------------------
+' 		Windows 2003 OS
+' -----------------------------------
+						if InStr(objos,"2003")<>0 Then
+							Set objWMIService = GetObject("winmgmts:\\" & strComputer & "\root\CIMV2") 
+							Set colItems = objWMIService.ExecQuery( _
+										"SELECT * FROM Win32_PerfFormattedData_TermService_TerminalServices",,48)
+' -----------------------------------
+' 		Windows 2008 OS
+' -----------------------------------										
+						elseif InStr(objos,"2008")<>0 Then
+							Set objWMIService = GetObject("winmgmts:\\" & strComputer & "\root\CIMV2") 
+							Set colItems = objWMIService.ExecQuery( _
+										"SELECT * FROM Win32_PerfFormattedData_LocalSessionManager_TerminalServices",,48)
+						else
+						End if	
+						For Each objItem in colItems
+							strconnection = objItem.ActiveSessions						
+						Next					
+					End if	
+				Next
+			End if
+			If strconnection = 0 then
+				emailContent = emailContent & "<TR>"
+				emailContent = emailContent & "<td style = ""border: 1px solid #C1DAD7; font-size:11px; padding: 6px 6px 6px 12px; background: #FFF2CC;"">" & "<font color=red>" & strcomputer
+				emailContent = emailContent & "<td style = ""border: 1px solid #C1DAD7; font-size:11px; padding: 6px 6px 6px 12px; background: #FFF2CC;"">" & "<font color=red>" & strconnection
+				emailwarning = emailwarning & "<TR>"
+				emailwarning = emailwarning & "<td style = ""border: 1px solid #C1DAD7; font-size:11px; padding: 6px 6px 6px 12px; background: #FFF2CC;"">" & "<font color=red>" & strcomputer
+				emailwarning = emailwarning & "<td style = ""border: 1px solid #C1DAD7; font-size:11px; padding: 6px 6px 6px 12px; background: #FFF2CC;"">" & "<font color=red>" & strconnection
+			else
+				emailContent = emailContent & "<TR>"
+				emailContent = emailContent & "<td style = ""border: 1px solid #C1DAD7; font-size:11px; padding: 6px 6px 6px 12px;"">" & strcomputer
+				emailContent = emailContent & "<td style = ""border: 1px solid #C1DAD7; font-size:11px; padding: 6px 6px 6px 12px;"">" & strconnection
+			end if
+		Next
+	
+		intTotalLoad = intTotalLoad + strconnection
+		intSvrCount = intSvrCount + 1		
+	Loop
+	fltAvgLoad = intTotalLoad / intSvrCount
+	emailContent = emailContent & "<TR>"
+	emailContent = emailContent & "<td style = ""border: 1px solid #C1DAD7; font-size:11px; padding: 6px 6px 6px 12px; background: #D3D3D3;"">" & "<strong>" & "--  AVERAGE"
+	emailContent = emailContent & "<td style = ""border: 1px solid #C1DAD7; font-size:11px; padding: 6px 6px 6px 12px; background: #D3D3D3;"">" & "<strong>" & round(fltAvgLoad,0)
+LOOP
+
+
+emailContent = emailtitle & emailwarning & emailContent & "</table><h3 style=""font: bold 10px Verdana, Arial, Helvetica, sans-serif;"">Jabil - Confidential</h3>"_
+  
+Server.Close
+Set fso = nothing
+Serverfile.Close
+Set fso = nothing
+Serverlist.Close
+Set fso = nothing
+
+
+' -----------------------------------
+' Define Email Parameters
+' -----------------------------------
+NameSpace = "http://schemas.microsoft.com/cdo/configuration/"
+Set Email = CreateObject("CDO.Message")
+Email.From = "ITGlobalResponseTeam@jabil.com"    
+Email.To = "_f7736@jabil.com"
+Email.Subject = "Terminal Server Load Radar"
+Email.Htmlbody =emailContent
+With Email.Configuration.Fields
+.Item(NameSpace&"sendusing") = 2
+.Item(NameSpace&"smtpserver") = "CORIMC04" 
+.Item(NameSpace&"smtpserverport") = 25
+.Item(NameSpace&"smtpauthenticate") = 1
+.update
+End With
+
+' -----------------------------------
+' Send Out The Email Report
+' -----------------------------------
+Email.Send
